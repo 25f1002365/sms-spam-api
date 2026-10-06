@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+venv/
+.venv/
+.env
+# NOTE: model.pkl is intentionally NOT ignored - Render needs it
