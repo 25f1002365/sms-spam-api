@@ -6,6 +6,7 @@ import time
 
 import joblib
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 logging.basicConfig(level=logging.INFO)
@@ -46,9 +47,13 @@ async def log_requests(request: Request, call_next):
     return response
 
 
-@app.get("/")
-def root():
-    return {"service": "SMS Spam Detector", "docs": "/docs", "health": "/health"}
+STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+
+
+@app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
+def home():
+    """Simple web UI."""
+    return FileResponse(os.path.join(STATIC_DIR, "index.html"))
 
 
 @app.get("/health")

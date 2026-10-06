@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SMS Spam Detector</title>
+<style>
+  :root { --bg:#f5f6fa; --card:#fff; --text:#1f2430; --muted:#6b7280; --border:#e3e6ee;
+          --accent:#4f46e5; --spam:#dc2626; --ham:#16a34a; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#12141b; --card:#1b1e28; --text:#e8eaf0; --muted:#9aa1b2; --border:#2c3040; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+         display:flex; justify-content:center; padding:32px 16px; }
+  main { width:100%; max-width:560px; }
+  h1 { font-size:1.6rem; margin:0 0 4px; }
+  .sub { color:var(--muted); margin:0 0 20px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:20px; }
+  textarea { width:100%; min-height:120px; resize:vertical; padding:12px; font:inherit;
+             color:var(--text); background:var(--bg); border:1px solid var(--border); border-radius:8px; }
+  textarea:focus { outline:2px solid var(--accent); border-color:transparent; }
+  .row { display:flex; justify-content:space-between; align-items:center; margin-top:12px; gap:12px; }
+  .count { color:var(--muted); font-size:.85rem; }
+  button.go { background:var(--accent); color:#fff; border:0; border-radius:8px; padding:10px 20px;
+              font:inherit; font-weight:600; cursor:pointer; }
+  button.go:disabled { opacity:.5; cursor:not-allowed; }
+  .examples { margin-top:16px; color:var(--muted); font-size:.85rem; }
+  .chip { display:inline-block; margin:6px 6px 0 0; padding:5px 10px; border:1px solid var(--border);
+          border-radius:999px; background:none; color:var(--text); font:inherit; font-size:.82rem; cursor:pointer; }
+  .chip:hover { border-color:var(--accent); }
+  #result { margin-top:18px; display:none; }
+  .badge { font-size:1.3rem; font-weight:700; }
+  .spam { color:var(--spam); } .ham { color:var(--ham); }
+  .bar { height:10px; background:var(--bg); border:1px solid var(--border); border-radius:999px; overflow:hidden; margin:10px 0 4px; }
+  .fill { height:100%; width:0; transition:width .4s; }
+  .err { color:var(--spam); }
+  footer { margin-top:18px; text-align:center; color:var(--muted); font-size:.85rem; }
+  footer a { color:var(--accent); }
+  #status { display:inline-block; width:8px; height:8px; border-radius:50%; background:#9ca3af; margin-right:6px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>SMS Spam Detector</h1>
+  <p class="sub">Paste a text message and see if the model thinks it is spam.</p>
+
+  <div class="card">
+    <textarea id="msg" maxlength="1000" placeholder="Type or paste an SMS message here..."></textarea>
+    <div class="row">
+      <span class="count"><span id="n">0</span>/1000</span>
+      <button class="go" id="btn">Check message</button>
+    </div>
+
+    <div class="examples">Try an example:
+      <div>
+        <button class="chip" data-t="WINNER!! You have won a free prize. Call 09061701461 now to claim">Prize scam</button>
+        <button class="chip" data-t="URGENT! Your account has been suspended. Click the link to verify now">Account alert</button>
+        <button class="chip" data-t="Hey, are we still meeting for lunch tomorrow?">Normal chat</button>
+        <button class="chip" data-t="Can you pick up some milk on your way home?">Reminder</button>
+      </div>
+    </div>
+
+    <div id="result">
+      <div class="badge" id="label"></div>
+      <div class="bar"><div class="fill" id="fill"></div></div>
+      <div class="count" id="prob"></div>
+    </div>
+  </div>
+
+  <footer>
+    <span id="status"></span><span id="statusText">checking API...</span> &middot;
+    <a href="/docs">API docs</a>
+  </footer>
+</main>
+
+<script>
+const msg = document.getElementById("msg"), btn = document.getElementById("btn");
+const result = document.getElementById("result"), label = document.getElementById("label");
+const fill = document.getElementById("fill"), prob = document.getElementById("prob");
+
+msg.addEventListener("input", () => document.getElementById("n").textContent = msg.value.length);
+document.querySelectorAll(".chip").forEach(c => c.addEventListener("click", () => {
+  msg.value = c.dataset.t; msg.dispatchEvent(new Event("input")); check();
+}));
+btn.addEventListener("click", check);
+msg.addEventListener("keydown", e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) check(); });
+
+async function check() {
+  const text = msg.value.trim();
+  if (!text) { show("Please enter a message first.", null); return; }
+  btn.disabled = true; btn.textContent = "Checking...";
+  try {
+    const r = await fetch("/predict", { method: "POST",
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: text }) });
+    if (!r.ok) throw new Error(r.status === 422 ? "Invalid message." : "Server error (" + r.status + ")");
+    const d = await r.json();
+    show(d.label === "spam" ? "Spam" : "Not spam", d);
+  } catch (e) { show(e.message, null); }
+  btn.disabled = false; btn.textContent = "Check message";
+}
+
+function show(text, d) {
+  result.style.display = "block";
+  if (!d) { label.textContent = text; label.className = "badge err"; fill.style.width = "0"; prob.textContent = ""; return; }
+  const spam = d.prediction === 1, pct = (d.spam_probability * 100).toFixed(1);
+  label.textContent = (spam ? "🚫 " : "✅ ") + text;
+  label.className = "badge " + (spam ? "spam" : "ham");
+  fill.style.width = pct + "%"; fill.style.background = spam ? "var(--spam)" : "var(--ham)";
+  prob.textContent = "Spam probability: " + pct + "%";
+}
+
+fetch("/health").then(r => r.json()).then(h => {
+  document.getElementById("status").style.background = h.model_loaded ? "#16a34a" : "#dc2626";
+  document.getElementById("statusText").textContent = h.model_loaded ? "API online, model loaded" : "model not loaded";
+}).catch(() => { document.getElementById("statusText").textContent = "API unreachable"; });
+</script>
+</body>
+</html>
